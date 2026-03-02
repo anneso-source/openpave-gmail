@@ -10,8 +10,8 @@ author:
   url: https://github.com/openpave
 
 license: MIT
-homepage: https://github.com/openpave/pave-gmail
-repository: openpave/pave-gmail
+homepage: https://github.com/cnrai/openpave-gmail
+repository: cnrai/openpave-gmail
 
 # Execution pattern
 pattern: sandbox
