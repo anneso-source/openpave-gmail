@@ -342,24 +342,20 @@ function main() {
           break;
         }
         
-        if (parsed.options.summary || parsed.options.full) {
+        if (parsed.options.json) {
+          // JSON output requested - just show basic message list
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          // Default: show detailed summary (either explicitly requested or default)
           const messages = client.getMessages(result.messages.map(m => m.id), 'full');
           
-          if (parsed.options.summary) {
-            printMessagesSummary(messages);
-          } else if (parsed.options.json) {
+          if (parsed.options.full && parsed.options.json) {
             const formatted = messages.map(m => m.error ? m : GmailClient.formatMessage(m));
             console.log(JSON.stringify(formatted, null, 2));
           } else {
-            // Default: summary format
+            // Default: summary format (covers --summary flag and no flags)
             printMessagesSummary(messages);
           }
-        } else if (parsed.options.json) {
-          console.log(JSON.stringify(result, null, 2));
-        } else {
-          // Default: show summary instead of raw JSON
-          const messages = client.getMessages(result.messages.map(m => m.id), 'full');
-          printMessagesSummary(messages);
         }
         break;
       }
@@ -383,13 +379,11 @@ function main() {
         
         const messages = client.getMessages(result.messages.map(m => m.id), 'full');
         
-        if (parsed.options.summary) {
-          printMessagesSummary(messages);
-        } else if (parsed.options.json) {
+        if (parsed.options.json) {
           const formatted = messages.map(m => m.error ? m : GmailClient.formatMessage(m));
           console.log(JSON.stringify(formatted, null, 2));
         } else {
-          // Default: summary format
+          // Default: summary format (covers --summary flag and no flags)
           printMessagesSummary(messages);
         }
         break;
