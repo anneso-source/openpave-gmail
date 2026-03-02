@@ -337,11 +337,37 @@ class GmailClient {
     // Pad with =
     while (b64.length % 4 !== 0) b64 += '=';
     try {
-      return decodeURIComponent(escape(atob(b64)));
+      // For text, try to decode as UTF-8
+      return decodeURIComponent(escape(GmailClient.base64DecodeBinary(b64)));
     } catch (e) {
       // Binary data - return raw decoded
-      return atob(b64);
+      return GmailClient.base64DecodeBinary(b64);
     }
+  }
+  
+  // Base64 decode for binary data (sandbox compatible)
+  static base64DecodeBinary(str) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let result = '';
+    let i = 0;
+    
+    // Remove padding
+    str = str.replace(/=/g, '');
+    
+    while (i < str.length) {
+      const a = chars.indexOf(str.charAt(i++));
+      const b = chars.indexOf(str.charAt(i++));
+      const c = chars.indexOf(str.charAt(i++));
+      const d = chars.indexOf(str.charAt(i++));
+      
+      const bitmap = (a << 18) | (b << 12) | (c << 6) | d;
+      
+      result += String.fromCharCode((bitmap >> 16) & 255);
+      if (c !== -1) result += String.fromCharCode((bitmap >> 8) & 255);
+      if (d !== -1) result += String.fromCharCode(bitmap & 255);
+    }
+    
+    return result;
   }
   
   // Extract plain text body from message parts
@@ -758,16 +784,11 @@ function main() {
         var b64 = data.replace(/-/g, '+').replace(/_/g, '/');
         while (b64.length % 4 !== 0) b64 += '=';
         
-        // Decode base64 to binary string and write as bytes
-        var binary = atob(b64);
-        var bytes = [];
-        for (var bi = 0; bi < binary.length; bi++) {
-          bytes.push(binary.charCodeAt(bi));
-        }
+        // Use custom base64 decode for binary data
+        var binary = GmailClient.base64DecodeBinary(b64);
         
-        // Write binary data - use IPC if available, otherwise try fs
+        // Write binary data
         var fs = require('fs');
-        // Write as latin1/binary encoded string
         fs.writeFileSync(outputPath, binary, 'binary');
         
         if (parsed.options.json) {
