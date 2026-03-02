@@ -311,8 +311,14 @@ function main() {
           console.log(`Total messages: ${result.messagesTotal}`);
           console.log(`Total threads: ${result.threadsTotal}`);
           console.log(`History ID: ${result.historyId}`);
-        } else {
+        } else if (parsed.options.json) {
           console.log(JSON.stringify(result, null, 2));
+        } else {
+          // Default: summary format
+          console.log(`Gmail Account: ${result.emailAddress}`);
+          console.log(`Total messages: ${result.messagesTotal}`);
+          console.log(`Total threads: ${result.threadsTotal}`);
+          console.log(`History ID: ${result.historyId}`);
         }
         break;
       }
@@ -328,8 +334,10 @@ function main() {
         if (!result.messages || result.messages.length === 0) {
           if (parsed.options.summary) {
             console.log('No messages found.');
-          } else {
+          } else if (parsed.options.json) {
             console.log(JSON.stringify({ messages: [], resultSizeEstimate: 0 }, null, 2));
+          } else {
+            console.log('No messages found.');
           }
           break;
         }
@@ -339,12 +347,19 @@ function main() {
           
           if (parsed.options.summary) {
             printMessagesSummary(messages);
-          } else {
+          } else if (parsed.options.json) {
             const formatted = messages.map(m => m.error ? m : GmailClient.formatMessage(m));
             console.log(JSON.stringify(formatted, null, 2));
+          } else {
+            // Default: summary format
+            printMessagesSummary(messages);
           }
-        } else {
+        } else if (parsed.options.json) {
           console.log(JSON.stringify(result, null, 2));
+        } else {
+          // Default: show summary instead of raw JSON
+          const messages = client.getMessages(result.messages.map(m => m.id), 'full');
+          printMessagesSummary(messages);
         }
         break;
       }
@@ -358,8 +373,10 @@ function main() {
         if (!result.messages || result.messages.length === 0) {
           if (parsed.options.summary) {
             console.log('No unread messages - inbox is clear!');
-          } else {
+          } else if (parsed.options.json) {
             console.log(JSON.stringify({ messages: [], resultSizeEstimate: 0 }, null, 2));
+          } else {
+            console.log('No unread messages - inbox is clear!');
           }
           break;
         }
@@ -368,9 +385,12 @@ function main() {
         
         if (parsed.options.summary) {
           printMessagesSummary(messages);
-        } else {
+        } else if (parsed.options.json) {
           const formatted = messages.map(m => m.error ? m : GmailClient.formatMessage(m));
           console.log(JSON.stringify(formatted, null, 2));
+        } else {
+          // Default: summary format
+          printMessagesSummary(messages);
         }
         break;
       }
@@ -392,8 +412,16 @@ function main() {
           console.log(`Date: ${formatted.date}`);
           console.log(`Labels: ${formatted.labels.join(', ')}`);
           console.log(`\nContent:\n${message.snippet}`);
-        } else {
+        } else if (parsed.options.json) {
           console.log(JSON.stringify(message, null, 2));
+        } else {
+          // Default: summary format
+          const formatted = GmailClient.formatMessage(message);
+          console.log(`Subject: ${formatted.subject}`);
+          console.log(`From: ${formatted.from}`);
+          console.log(`Date: ${formatted.date}`);
+          console.log(`Labels: ${formatted.labels.join(', ')}`);
+          console.log(`\nContent:\n${message.snippet}`);
         }
         break;
       }
@@ -422,7 +450,7 @@ function main() {
           }
         }
         
-        if (!parsed.options.summary) {
+        if (parsed.options.json) {
           console.log(JSON.stringify(results, null, 2));
         }
         break;
@@ -440,14 +468,18 @@ function main() {
           client.markAsUnread(messageId);
           if (parsed.options.summary) {
             console.log(`Marked as unread: ${messageId}`);
-          } else {
+          } else if (parsed.options.json) {
             console.log(JSON.stringify({ success: true, messageId }, null, 2));
+          } else {
+            console.log(`Marked as unread: ${messageId}`);
           }
         } catch (error) {
           if (parsed.options.summary) {
             console.log(`Failed to mark as unread: ${error.message}`);
-          } else {
+          } else if (parsed.options.json) {
             console.log(JSON.stringify({ success: false, error: error.message }, null, 2));
+          } else {
+            console.log(`Failed to mark as unread: ${error.message}`);
           }
           process.exit(1);
         }
@@ -478,7 +510,7 @@ function main() {
           }
         }
         
-        if (!parsed.options.summary) {
+        if (parsed.options.json) {
           console.log(JSON.stringify(results, null, 2));
         }
         break;
@@ -496,12 +528,17 @@ function main() {
       if (process.env.DEBUG) {
         console.error('Stack trace:', error.stack);
       }
-    } else {
+    } else if (parsed.options.json) {
       console.error(JSON.stringify({
         error: error.message,
         status: error.status,
         data: error.data
       }, null, 2));
+    } else {
+      console.error(`Gmail Error: ${error.message}`);
+      if (process.env.DEBUG) {
+        console.error('Stack trace:', error.stack);
+      }
     }
     process.exit(1);
   }
