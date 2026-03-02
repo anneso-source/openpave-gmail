@@ -345,26 +345,39 @@ function main() {
         if (parsed.options.json) {
           // JSON output requested - get full messages and format them
           const messages = client.getMessages(result.messages.map(m => m.id), 'full');
-          // Output each message as a separate JSON line to avoid sandbox object conversion issues
-          messages.forEach(m => {
-            if (m.error) {
-              console.log(JSON.stringify(m));
-            } else {
-              const msgData = GmailClient.formatMessage(m);
-              const simplified = {
-                id: msgData.id,
-                threadId: msgData.threadId,
-                subject: msgData.subject,
-                from: msgData.from,
-                to: msgData.to,
-                date: msgData.date,
-                isUnread: msgData.isUnread,
-                labels: msgData.labels.join(','),
-                snippet: msgData.snippet
-              };
-              console.log(JSON.stringify(simplified));
-            }
-          });
+          
+          // Check if sandbox issue is fixed via environment variable
+          const sandboxFixed = process.env.PAVE_SANDBOX_FIXED === 'true';
+          
+          if (sandboxFixed) {
+            // Future: When sandbox issue is fixed, output proper JSON array
+            const formatted = messages.map(m => {
+              if (m.error) return m;
+              return GmailClient.formatMessage(m);
+            });
+            console.log(JSON.stringify(formatted, null, 2));
+          } else {
+            // Current: Output each message as separate JSON line to avoid sandbox conversion
+            messages.forEach(m => {
+              if (m.error) {
+                console.log(JSON.stringify(m));
+              } else {
+                const msgData = GmailClient.formatMessage(m);
+                const simplified = {
+                  id: msgData.id,
+                  threadId: msgData.threadId,
+                  subject: msgData.subject,
+                  from: msgData.from,
+                  to: msgData.to,
+                  date: msgData.date,
+                  isUnread: msgData.isUnread,
+                  labels: msgData.labels.join(','),
+                  snippet: msgData.snippet
+                };
+                console.log(JSON.stringify(simplified));
+              }
+            });
+          }
         } else {
           // Default: show detailed summary (either explicitly requested or default)
           const messages = client.getMessages(result.messages.map(m => m.id), 'full');
@@ -393,25 +406,37 @@ function main() {
         const messages = client.getMessages(result.messages.map(m => m.id), 'full');
         
         if (parsed.options.json) {
-          messages.forEach(m => {
-            if (m.error) {
-              console.log(JSON.stringify(m));
-            } else {
-              const msgData = GmailClient.formatMessage(m);
-              const simplified = {
-                id: msgData.id,
-                threadId: msgData.threadId,
-                subject: msgData.subject,
-                from: msgData.from,
-                to: msgData.to,
-                date: msgData.date,
-                isUnread: msgData.isUnread,
-                labels: msgData.labels.join(','),
-                snippet: msgData.snippet
-              };
-              console.log(JSON.stringify(simplified));
-            }
-          });
+          const sandboxFixed = process.env.PAVE_SANDBOX_FIXED === 'true';
+          
+          if (sandboxFixed) {
+            // Future: When sandbox issue is fixed, output proper JSON array
+            const formatted = messages.map(m => {
+              if (m.error) return m;
+              return GmailClient.formatMessage(m);
+            });
+            console.log(JSON.stringify(formatted, null, 2));
+          } else {
+            // Current: Output each message as separate JSON line
+            messages.forEach(m => {
+              if (m.error) {
+                console.log(JSON.stringify(m));
+              } else {
+                const msgData = GmailClient.formatMessage(m);
+                const simplified = {
+                  id: msgData.id,
+                  threadId: msgData.threadId,
+                  subject: msgData.subject,
+                  from: msgData.from,
+                  to: msgData.to,
+                  date: msgData.date,
+                  isUnread: msgData.isUnread,
+                  labels: msgData.labels.join(','),
+                  snippet: msgData.snippet
+                };
+                console.log(JSON.stringify(simplified));
+              }
+            });
+          }
         } else {
           // Default: summary format (covers --summary flag and no flags)
           printMessagesSummary(messages);
