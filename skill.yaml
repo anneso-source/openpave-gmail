@@ -6,8 +6,8 @@ version: 1.1.0
 description: Read and manage Gmail messages securely using OAuth
 
 author:
-  name: OpenPave
-  url: https://github.com/openpave
+  name: cnrai
+  url: https://github.com/cnrai
 
 license: MIT
 homepage: https://github.com/cnrai/openpave-gmail
