@@ -358,14 +358,7 @@ class GmailClient {
       // Add each attachment
       for (var ai = 0; ai < options.attachments.length; ai++) {
         var att = options.attachments[ai];
-        var attBase64;
-        
-        if (Buffer.isBuffer(att.content)) {
-          attBase64 = att.content.toString('base64');
-        } else {
-          // Assume already base64 string
-          attBase64 = att.content;
-        }
+        var attBase64 = att.base64 || '';
         
         // Split base64 into 76-char lines per RFC 2045
         var wrappedBase64 = attBase64.match(/.{1,76}/g).join('\r\n');
@@ -507,9 +500,22 @@ class GmailClient {
     
     var filename = path.basename(filePath);
     var mimeType = GmailClient.guessMimeType(filename);
-    var content = fs.readFileSync(filePath);
+    // Read file as base64 directly — avoids Buffer/binary issues in sandbox
+    var base64Content;
+    try {
+      // Try reading as buffer and converting to base64
+      var rawContent = fs.readFileSync(filePath);
+      if (rawContent && typeof rawContent.toString === 'function') {
+        base64Content = rawContent.toString('base64');
+      } else {
+        throw new Error('Cannot convert to base64');
+      }
+    } catch (e) {
+      // Fallback: use system command to base64 encode
+      throw new Error('Failed to read attachment: ' + e.message);
+    }
     
-    return { filename: filename, mimeType: mimeType, content: content };
+    return { filename: filename, mimeType: mimeType, base64: base64Content };
   }
   
   // Extract HTML body from message parts (for quoting in replies)
