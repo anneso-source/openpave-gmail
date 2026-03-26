@@ -167,6 +167,14 @@ class GmailClient {
     return this.request('/users/me/profile');
   }
   
+  // Get all messages in a thread
+  getThread(threadId, format) {
+    var paramData = {};
+    if (format) paramData.format = format;
+    var queryString = Object.keys(paramData).length > 0 ? '?' + encodeFormData(paramData) : '';
+    return this.request('/users/me/threads/' + threadId + queryString);
+  }
+  
   modifyMessage(messageId, options = {}) {
     const body = {};
     if (options.addLabelIds) body.addLabelIds = options.addLabelIds;
@@ -310,7 +318,7 @@ class GmailClient {
     if (options.references) lines.push('References: ' + options.references);
     
     lines.push('MIME-Version: 1.0');
-    lines.push('Content-Type: text/plain; charset=UTF-8');
+    lines.push('Content-Type: text/html; charset=UTF-8');
     lines.push('Content-Transfer-Encoding: 7bit');
     lines.push('');
     lines.push(options.body || '');
@@ -388,6 +396,50 @@ class GmailClient {
     }
     
     return result;
+  }
+  
+  // Extract HTML body from message parts (for quoting in replies)
+  static extractHtmlBody(payload) {
+    if (!payload) return '';
+    
+    // Simple message with body directly
+    if (payload.body && payload.body.data) {
+      // Check if it's HTML
+      if (payload.mimeType === 'text/html') {
+        return GmailClient.base64UrlDecode(payload.body.data);
+      }
+      // Plain text - wrap in basic HTML
+      var text = GmailClient.base64UrlDecode(payload.body.data);
+      return '<p>' + text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+    }
+    
+    // Multipart - look for text/html first
+    if (payload.parts) {
+      for (var i = 0; i < payload.parts.length; i++) {
+        var part = payload.parts[i];
+        if (part.mimeType === 'text/html' && part.body && part.body.data) {
+          return GmailClient.base64UrlDecode(part.body.data);
+        }
+      }
+      // Recurse into multipart sub-parts
+      for (var j = 0; j < payload.parts.length; j++) {
+        var subPart = payload.parts[j];
+        if (subPart.parts) {
+          var html = GmailClient.extractHtmlBody(subPart);
+          if (html) return html;
+        }
+      }
+      // Fallback to text/plain wrapped in HTML
+      for (var k = 0; k < payload.parts.length; k++) {
+        var plainPart = payload.parts[k];
+        if (plainPart.mimeType === 'text/plain' && plainPart.body && plainPart.body.data) {
+          var plainText = GmailClient.base64UrlDecode(plainPart.body.data);
+          return '<p>' + plainText.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+        }
+      }
+    }
+    
+    return '';
   }
   
   // Extract plain text body from message parts
@@ -1025,6 +1077,8 @@ function main() {
         var origSubject2 = '';
         var origFrom = '';
         var origTo2 = '';
+        var origCc = '';
+        var origDate = '';
         
         for (var rhi = 0; rhi < replyHeaders.length; rhi++) {
           var hdr = replyHeaders[rhi];
@@ -1033,11 +1087,53 @@ function main() {
           if (hdr.name === 'Subject') origSubject2 = hdr.value;
           if (hdr.name === 'From') origFrom = hdr.value;
           if (hdr.name === 'To') origTo2 = hdr.value;
+          if (hdr.name === 'Cc') origCc = hdr.value;
+          if (hdr.name === 'Date') origDate = hdr.value;
         }
         
-        // Determine reply-to address
+        // Reply All: To = original sender, Cc = all participants from thread minus yourself and reply-to
+        var myProfile = client.getProfile();
+        var myEmail = (myProfile.emailAddress || '').toLowerCase();
+        
         var replyTo = parsed.options.to || origFrom;
-        var replyCc = parsed.options.cc || '';
+        
+        // Collect all participants from the entire thread for Reply All
+        var allRecipients = [];
+        try {
+          var thread = client.getThread(origMessage.threadId, 'metadata');
+          var threadMessages = thread.messages || [];
+          for (var tmi = 0; tmi < threadMessages.length; tmi++) {
+            var tmHeaders = threadMessages[tmi].payload?.headers || [];
+            for (var thi = 0; thi < tmHeaders.length; thi++) {
+              var tmHdr = tmHeaders[thi];
+              if (tmHdr.name === 'To' || tmHdr.name === 'Cc') {
+                var addrs = tmHdr.value.split(',').map(function(s) { return s.trim(); });
+                for (var ai = 0; ai < addrs.length; ai++) {
+                  if (addrs[ai]) allRecipients.push(addrs[ai]);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // Fallback to single message recipients
+          if (origTo2) allRecipients = allRecipients.concat(origTo2.split(',').map(function(s) { return s.trim(); }));
+          if (origCc) allRecipients = allRecipients.concat(origCc.split(',').map(function(s) { return s.trim(); }));
+        }
+        
+        // Deduplicate and filter out self and the reply-to address
+        var replyToEmail = (origFrom.match(/<([^>]+)>/) || [])[1] || origFrom;
+        var seenEmails = {};
+        var filteredCc = [];
+        for (var fi = 0; fi < allRecipients.length; fi++) {
+          var addr = allRecipients[fi];
+          var email = ((addr.match(/<([^>]+)>/) || [])[1] || addr).toLowerCase().trim();
+          if (email && !seenEmails[email] && email !== myEmail && email !== replyToEmail.toLowerCase()) {
+            seenEmails[email] = true;
+            filteredCc.push(addr);
+          }
+        }
+        
+        var replyCc = parsed.options.cc || (filteredCc.length > 0 ? filteredCc.join(', ') : '');
         
         // Build subject
         var replySubject = parsed.options.subject || '';
@@ -1049,12 +1145,28 @@ function main() {
           }
         }
         
+        // Extract original message body (HTML) for quoting
+        var origHtmlBody = GmailClient.extractHtmlBody(origMessage.payload);
+        var quotedHtml = '';
+        if (origHtmlBody) {
+          var dateStr = origDate || 'unknown date';
+          var fromStr = origFrom || 'unknown sender';
+          quotedHtml = '<br><br><div class="gmail_quote">' +
+            '<div dir="ltr" class="gmail_attr">On ' + dateStr + ', ' + fromStr + ' wrote:<br></div>' +
+            '<blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">' +
+            origHtmlBody +
+            '</blockquote></div>';
+        }
+        
+        // Combine reply body with quoted original
+        var fullBody = replyBodyText + quotedHtml;
+        
         var replyOpts = {
           to: replyTo,
           cc: replyCc,
           bcc: parsed.options.bcc || '',
           subject: replySubject,
-          body: replyBodyText,
+          body: fullBody,
           inReplyTo: origMessageId,
           references: origReferences ? origReferences + ' ' + origMessageId : origMessageId,
           threadId: origMessage.threadId
@@ -1070,7 +1182,9 @@ function main() {
             console.log('Reply draft created');
             console.log('  Draft ID: ' + replyResult.id);
             console.log('  To: ' + replyTo);
+            if (replyCc) console.log('  Cc: ' + replyCc);
             console.log('  Subject: ' + replySubject);
+            console.log('  Quoted thread: ' + (quotedHtml ? 'yes' : 'no'));
           }
         } else {
           replyResult = client.sendMessage(replyOpts);
