@@ -321,7 +321,20 @@ class GmailClient {
     lines.push('Content-Type: text/html; charset=UTF-8');
     lines.push('Content-Transfer-Encoding: 7bit');
     lines.push('');
-    lines.push(options.body || '');
+    
+    // Convert plain text to HTML if the body doesn't already contain HTML tags
+    var bodyText = options.body || '';
+    if (!bodyText.match(/<[a-z][\s\S]*>/i)) {
+      // Escape HTML entities, then convert newlines to <br>
+      bodyText = bodyText
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>\n');
+      bodyText = '<p>' + bodyText + '</p>';
+    }
+    lines.push(bodyText);
     
     var message = lines.join('\r\n');
     
