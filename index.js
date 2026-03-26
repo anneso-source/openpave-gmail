@@ -912,9 +912,13 @@ function main() {
           var origHeaders = origMsg.payload?.headers || [];
           var origMsgId = '';
           var origRefs = '';
+          var origFrom = '';
+          var origDate = '';
           for (var hi = 0; hi < origHeaders.length; hi++) {
             if (origHeaders[hi].name === 'Message-ID' || origHeaders[hi].name === 'Message-Id') origMsgId = origHeaders[hi].value;
             if (origHeaders[hi].name === 'References') origRefs = origHeaders[hi].value;
+            if (origHeaders[hi].name === 'From') origFrom = origHeaders[hi].value;
+            if (origHeaders[hi].name === 'Date') origDate = origHeaders[hi].value;
           }
           draftOpts.inReplyTo = origMsgId;
           draftOpts.references = origRefs ? origRefs + ' ' + origMsgId : origMsgId;
@@ -930,6 +934,17 @@ function main() {
             } else {
               draftOpts.subject = origSubject;
             }
+          }
+          
+          // Append quoted original message (same as reply command)
+          var origHtml = GmailClient.extractHtmlBody(origMsg.payload);
+          if (origHtml) {
+            var quotedThread = '<br><br><div class="gmail_quote">' +
+              '<div dir="ltr" class="gmail_attr">On ' + (origDate || 'unknown date') + ', ' + (origFrom || 'unknown sender') + ' wrote:<br></div>' +
+              '<blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">' +
+              origHtml +
+              '</blockquote></div>';
+            draftOpts.body = draftBody + quotedThread;
           }
         }
         
